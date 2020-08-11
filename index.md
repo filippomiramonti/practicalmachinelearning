@@ -1,37 +1,110 @@
-## Welcome to GitHub Pages
+---
+title: "Human Activity Recognition using Machine Learning"
+author: "Filippo Miramonti"
+date: "11/8/2020"
+output: html_document
+---
 
-You can use the [editor on GitHub](https://github.com/filippomiramonti/practicalmachinelearning/edit/gh-pages/index.md) to maintain and preview the content for your website in Markdown files.
+## Background
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. The goal of this project is to predict the manner in which partecipants did the barbell lift. The data for this project come from: http://groupware.les.inf.puc-rio.br/har.
+In this project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
 
-### Markdown
+### Project structure:
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
+* Data Preprocessing
+* Exploratory Analysis
+* Prediction Model Selection
+* Predicting Test Data Output
 
-```markdown
-Syntax highlighted code block
+## Data Preprocessing
 
-# Header 1
-## Header 2
-### Header 3
+First of all I load the training and the testing datasets from the source URLs and split the training dataset into train and test sets.
 
-- Bulleted
-- List
+```{r message=FALSE}
+library(caret)
+training <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+testing <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
 
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
+inTrain <- createDataPartition(y = training$classe, p=0.7, list=FALSE)
+train <- training[inTrain,]
+test <- training[-inTrain,]
+train$classe <- as.factor(train$classe)
+test$classe <- as.factor(test$classe)
 ```
 
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
+From 160 variables present in the dataset, some have a lot of NAs and should be excluded.
+Moreover, the first seven variables are only used for identification and should be excluded too.
 
-### Jekyll Themes
+```{r}
+train <- train[, 8:ncol(train)]
+train[train == "" ] <- NA
+test[test == "" ] <- NA
+train <- train[, colSums(is.na(train)) < nrow(train) * 0.95]
+test <- test[, colnames(train)]
+```
 
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/filippomiramonti/practicalmachinelearning/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
+The result of the data preprocessing is that there are 53 variables left.
 
-### Support or Contact
+## Exploratory Analysis
 
-Having trouble with Pages? Check out our [documentation](https://docs.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
+Now that I have cleaned dataset, removing useless variables, I can investigate the correlation between these variables using a correlation plot:
+
+```{r message=FALSE}
+library(corrplot)
+corMatrix <- cor(train[,-53])
+corrplot(corMatrix, method = "color", tl.col = rgb(0,0,0), type = "lower", tl.cex = 0.8)
+```
+
+It's easy to see in the plot above, where darker gradient correspond to having higher correlation, that there are few areas where the correlation is high: it isn't necessary to run the Principal Component Analysis(PCA) in order to reduce the correlated variables.
+
+## Prediction Model Selection
+
+To select the model I will use three methods(Decision Tree, Random Forest and Generalized Boosted Model) and I will choose the one who have the best accuracy to predict the outcome variable in the testing set.
+
+### Decision Tree
+
+```{r message=FALSE, warning=FALSE}
+library(rpart)
+library(rattle)
+set.seed(110820)
+fitDT <- rpart(classe ~ ., data = train)
+fancyRpartPlot(fitDT)
+```
+```{r }
+predDT <- predict(fitDT, test, type = "class")
+confusionMatrix(predDT, test$classe)
+```
+
+### Random Forest
+
+```{r message=FALSE, warning=FALSE}
+control <- trainControl(method = "cv", number = 3, verboseIter=FALSE)
+fitRF <- train(classe ~ ., data = train, method = "rf", trControl = control)
+fitRF$finalModel
+```
+```{r}
+predRF <- predict(fitRF, test)
+confusionMatrix(predRF, test$classe)
+```
+
+### Generalized Boosted Model
+
+```{r message=FALSE, warning=FALSE}
+control <- trainControl(method = "repeatedcv", number = 5, repeats = 2, verboseIter = FALSE)
+fitGBM <- train(classe ~ ., data = train, method = "gbm", verbose = FALSE, trControl = control)
+fitGBM$finalModel
+```
+```{r}
+predGBM <- predict(fitGBM, test)
+confusionMatrix(predGBM, test$classe)
+```
+
+The Random Forest model has an higher accuracy, equal to "r confusionMatrix(predDT, test$classe)$overall['Accuracy'] * 100"%.
+
+## Predicting Test Data Output
+
+```{r}
+predRF <- predict(fitRF, testing)
+predRF
+```
